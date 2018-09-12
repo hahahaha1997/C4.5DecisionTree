@@ -71,49 +71,88 @@ def splitContinuousDataSet(dataSet,feature,continuousValue):#根据连续值来�
     return biggerDataSet,smallerDataSet
 
 
-#不需要将训练集中有，测试集中没有的值补全
-# def addFeatureValue(featureListOfValue,feature):
-#     feat = [[ 'Private', 'Self-emp-not-inc', 'Self-emp-inc',
-#               'Federal-gov', 'Local-gov', 'State-gov', 'Without-pay', 'Never-worked'],
-#             [],[],[],[],[]]
-#     for featureValue in feat[feature]: #feat保存的是所有属性特征的所有可能的取值，其结构为feat = [ [val1,val2,val3,…,valn], [], [], [], … ,[] ]
-#         featureListOfValue.append(featureValue)
+#连续型属性不需要将训练集中有，测试集中没有的值补全，离散性属性需要
+def addFeatureValue(featureListOfValue,feature):
+    feat = [[ 'Private', 'Self-emp-not-inc', 'Self-emp-inc',
+              'Federal-gov', 'Local-gov', 'State-gov', 'Without-pay', 'Never-worked'],
+            [],[],[],[],[]]
+    for featureValue in feat[feature]: #feat保存的是所有属性特征的所有可能的取值，其结构为feat = [ [val1,val2,val3,…,valn], [], [], [], … ,[] ]
+        featureListOfValue.append(featureValue)
+
+def calGainRatioUnContinuous(dataSet,feature,HC):
+    # addFeatureValue(featureListOfValue,feature) #增加在训练集中有，测试集中没有的属性特征的取值
+    featureListOfValue = [vector[feature] for vector in dataSet]  # 对于dataset中每一个feature，创建单独的列表list保存其取值，其中是不重复的
+    unique = set(featureListOfValue)
+    HTC = 0.0  # 保存HTC，即H（T|C）
+    split = 0.0  # 保存split(T)
+    for value in unique:
+        subDataSet = splitDataSet(dataSet, feature, value)  # 划分数据集
+        probability = len(subDataSet) / float(len(dataSet))  # 求得当前类别的概率
+        split -= probability * log(probability, 2)  # 计算split(T)
+        HTC += probability * calculateEntropy(subDataSet)  # 计算当前类别的香农熵，并和HTC想加，即H(T|C) = H（T1|C）+ H(T2|C) + … + H(TN|C)
+    IG = HC - HTC  # 计算对于该种划分方式的信息增益
+    if split == 0:
+        split = 1
+    gainRatio = float(IG) / float(split)  # 计算对于该种划分方式的信息增益率
+    return gainRatio
+
+def calGainRatioContinuous(dataSet,feature,HC):
+    featureListOfValue = [vector[feature] for vector in dataSet]  # 对于dataset中每一个feature，创建单独的列表list保存其取值，其中是不重复的
+    featureListOfValue  = set(featureListOfValue)
+    sortedValue = sorted(featureListOfValue)
+    splitPoint = []
+    IGMAX = 0.0
+    GR = 0.0
+    continuousValue = 0.0
+    for i in range(len(sortedValue)-1):#n个value，应该有n-1个分割点splitPoint
+        splitPoint.append((float(sortedValue[i])+float(sortedValue[i+1]))/2.0)
+    for i in range(len(splitPoint)):
+        HTC = 0.0
+        split = 0.0
+        biggerDataSet,smallerDataSet = splitContinuousDataSet(dataSet,feature,splitPoint[i])
+        probabilityBig = len(biggerDataSet) / len(dataSet)
+        probabilitySmall = len(smallerDataSet) / len(dataSet)
+        HTC += probabilityBig * calculateEntropy(biggerDataSet)
+        HTC += probabilitySmall * calculateEntropy(smallerDataSet)
+        IG = HC - HTC
+        if IG>IGMAX:
+            IGMAX = IG
+            split -= probabilityBig * log(probabilityBig, 2)
+            split -= probabilitySmall * log(probabilitySmall, 2)
+            continuousValue = splitPoint[i]
+            N = len(splitPoint)
+            D = len(dataSet)
+            IG -= log(N - 1, 2) / abs(D)
+            GR = float(IG) / float(split)
+    return GR,continuousValue
 
 #选择最好的数据集划分方式
 def chooseBestSplitWay(dataSet,labelType):
     isContinuous = -1 #判断是否是连续值，是为1，不是为0
     HC = calculateEntropy(dataSet)#计算整个数据集的香农熵(期望信息)，即H(C)，用来和每个feature的香农熵进行比较
     bestfeatureIndex = -1                   #最好的划分方式的索引值，因为0也是索引值，所以应该设置为负数
-    gainRatioMax=0.0                        #信息增益率=(期望信息-熵)/分割获得的信息增益，即为GR = IG / split = ( HC - HTC )/ split , gainRatioMax为最好的信息增益率，IG为各种划分方式的信息增益
-    IGMAX = 0.0
+    GRMAX=0.0                        #信息增益率=(期望信息-熵)/分割获得的信息增益，即为GR = IG / split = ( HC - HTC )/ split , gainRatioMax为最好的信息增益率，IG为各种划分方式的信息增益
     continuousValue = -1 #设置如果是连续值的属性返回的最好的划分方式的最好分割点的值
     for feature in range(len(dataSet[0]) -1 ): #计算feature的个数，由于dataset中是包含有类别的，所以要减去类别
-        featureListOfValue=[vector[feature] for vector in dataSet] #对于dataset中每一个feature，创建单独的列表list保存其取值，其中是不重复的
-        #addFeatureValue(featureListOfValue,feature) #增加在训练集中有，测试集中没有的属性特征的取值
         if labelType[feature] == 'uncontinuous':
-            unique=set(featureListOfValue)
-            HTC=0.0 #保存HTC，即H（T|C）
-            split = 0.0 #保存split(T)
-            gainRatio = 0.0 #计算信息增益率
-            for value in unique:
-                subDataSet = splitDataSet(dataSet,feature,value) #划分数据集
-                probability = len(subDataSet) / float(len(dataSet)) #求得当前类别的概率
-                split -= probability * log(probability,2) #计算split(T)
-                HTC += probability * calculateEntropy(subDataSet) #计算当前类别的香农熵，并和HTC想加，即H(T|C) = H（T1|C）+ H(T2|C) + … + H(TN|C)
-            IG=HC-HTC #计算对于该种划分方式的信息增益
-            if split == 0:
-                split = 1
-                gainRatio = IG/split #计算对于该种划分方式的信息增益率
-            if gainRatio > gainRatioMax :
-                isContinuous = 0
-                gainRatioMax = gainRatio
+            GR = calGainRatioUnContinuous(dataSet,feature,HC)
+            if GR>GRMAX:
+                GRMAX = GR
                 bestfeatureIndex = feature
+                isContinuous = 0
         else: #如果feature是连续型的
-            featureListOfValue  = set(featureListOfValue)
-            sortedValue = sorted(featureListOfValue)
-            splitPoint = []
-            for i in range(len(sortedValue)-1):#n个value，应该有n-1个分割点splitPoint
-                splitPoint.append((float(sortedValue[i])+float(sortedValue[i+1]))/2.0)
+            GR ,bestSplitPoint = calGainRatioContinuous(dataSet,feature,HC)
+            if GR>GRMAX:
+                GRMAX = GR
+                continuousValue = bestSplitPoint
+                isContinuous = 1
+                bestfeatureIndex = feature
+    return bestfeatureIndex,continuousValue,isContinuous
+            # featureListOfValue  = set(featureListOfValue)
+            # sortedValue = sorted(featureListOfValue)
+            # splitPoint = []
+            # for i in range(len(sortedValue)-1):#n个value，应该有n-1个分割点splitPoint
+            #     splitPoint.append((float(sortedValue[i])+float(sortedValue[i+1]))/2.0)
 
             #C4.5修正，不再使用信息增益率来选择最佳分割点
             # for i in range(len(splitPoint)): #对于n-1个分割点，计算每个分割点的信息增益率，来选择最佳分割点
@@ -121,7 +160,6 @@ def chooseBestSplitWay(dataSet,labelType):
             #     split = 0.0
             #     gainRatio = 0.0
             #     biggerDataSet,smallerDataSet = splitContinuousDataSet(dataSet,feature,splitPoint[i])
-            #     print(i)
             #     probabilityBig = len(biggerDataSet)/len(dataSet)
             #     probabilitySmall = len(smallerDataSet)/len(dataSet)
             #     HTC += probabilityBig * calculateEntropy(biggerDataSet)
@@ -139,34 +177,30 @@ def chooseBestSplitWay(dataSet,labelType):
             #         gainRatioMax = gainRatio
             #         bestfeatureIndex = feature
             #         continuousValue = splitPoint[i]
-            for i in range(len(splitPoint)):
-                HTC = 0.0
-                split = 0.0
-                gainRatio = 0.0
-                biggerDataSet,smallerDataSet = splitContinuousDataSet(dataSet,feature,splitPoint[i])
-
-                probabilityBig = len(biggerDataSet) / len(dataSet)
-                probabilitySmall = len(smallerDataSet) / len(dataSet)
-                HTC += probabilityBig * calculateEntropy(biggerDataSet)
-                HTC += probabilityBig * calculateEntropy(smallerDataSet)
-                if probabilityBig != 0:
-                    split -= probabilityBig * log(probabilityBig, 2)
-                if probabilitySmall != 0:
-                    split -= probabilitySmall * log(probabilitySmall, 2)
-                IG = HC - HTC
-                if IG>IGMAX:
-                    IGMAX = IG
-                    continuousValue = splitPoint[i]
-                N = len(splitPoint)
-                D = len(dataSet)
-                IG -= log(N,2)/abs(D)
-                gainRatio = float(IG)/float(split)
-                if gainRatio>gainRatioMax:
-                    isContinuous=1
-                    gainRatioMax = gainRatio
-                    bestfeatureIndex = feature
-
-    return bestfeatureIndex,continuousValue,isContinuous
+            # IGMAX = 0.0
+            # for i in range(len(splitPoint)):
+            #     HTC = 0.0
+            #     split = 0.0
+            #     biggerDataSet,smallerDataSet = splitContinuousDataSet(dataSet,feature,splitPoint[i])
+            #     probabilityBig = len(biggerDataSet) / len(dataSet)
+            #     probabilitySmall = len(smallerDataSet) / len(dataSet)
+            #     HTC += probabilityBig * calculateEntropy(biggerDataSet)
+            #     HTC += probabilitySmall * calculateEntropy(smallerDataSet)
+            #     IG = HC - HTC
+            #     if IG>IGMAX:
+            #         split -= probabilityBig * log(probabilityBig, 2)
+            #         split -= probabilitySmall * log(probabilitySmall, 2)
+            #         IGMAX = IG
+            #         continuousValue = splitPoint[i]
+            #         N = len(splitPoint)
+            #         D = len(dataSet)
+            #         IG -= log(N - 1, 2) / abs(D)
+            #         GR = float(IG) / float(split)
+            #         if GR > GRMAX:
+            #             isContinuous = 1
+            #             GRMAX = GR
+            #             bestfeatureIndex = feature
+        # return bestfeatureIndex,continuousValue,isContinuous
 
 #返回出现次数最多的类别，避免产生所有特征全部用完无法判断类别的情况
 def majority(classList):
@@ -194,6 +228,7 @@ def createTree(dataSet,labels,labelType):
         return majority(classificationList)
     bestFeature,continuousValue,isContinuous = chooseBestSplitWay(dataSet,labelType) #计算香农熵和信息增益来返回最佳的划分方案，bestFeature保存最佳的划分的feature的索引，在C4.5中要判断该feature是连续型还是离散型的,continuousValue是当前的返回feature是continuous的的时候，选择的“最好的”分割点
     bestFeatureLabel = labels[bestFeature] #取出上述的bestfeature的具体值
+    print(bestFeatureLabel)
     Tree = {bestFeatureLabel:{}}
     del(labels[bestFeature]) #删除当前进行划分是使用的feature避免下次继续使用到这个feature来划分
     del(labelType[bestFeature])#删除labelType中的feature类型，保持和labels同步
@@ -303,9 +338,9 @@ def main():
     dataSetName = r"C:\Users\yang\Desktop\adult.data"
     mydate, label ,labelType= createDateset(dataSetName)
     labelList = label[:]
-
-    Tree = createTree(mydate, labelList,labelType)
-
+    labelTypeList = labelType[:]
+    Tree = createTree(mydate, labelList,labelType=labelTypeList)
+    print(Tree)
     storeTree(Tree, r'C:\Users\yang\Desktop\tree.txt')  # 保存决策树，避免下次再生成决策树
 
     #Tree=grabTree(r'C:\Users\yang\Desktop\tree.txt')#读取决策树，如果已经存在tree.txt可以直接使用决策树不需要再次生成决策树
