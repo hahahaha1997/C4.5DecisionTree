@@ -120,7 +120,7 @@ def calGainRatioContinuous(dataSet,feature,HC):
             split -= probabilityBig * log(probabilityBig, 2)
             split -= probabilitySmall * log(probabilitySmall, 2)
             continuousValue = splitPoint[i]
-            N = len(splitPoint)
+            N = len(featureListOfValue)
             D = len(dataSet)
             IG -= log(N - 1, 2) / abs(D)
             GR = float(IG) / float(split)
